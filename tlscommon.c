@@ -627,6 +627,8 @@ static int certattr_matchip(GENERAL_NAME *gn, struct certattrmatch *match){
 }
 
 // Generates a generic DNS. eg: converts idp.openroaming.net to *.openroaming.net
+// Compares generated generic DNS with DNS from certificate
+// returns 1 if both match else returns 0
 static int compareWithModifiedHostname(char* certDNS, char* scriptHostName) {
     int len = 0;
     int lenOfGeneric = 0, lenOfModifiedScriptHostName = 0;
