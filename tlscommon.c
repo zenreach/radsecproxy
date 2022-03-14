@@ -626,9 +626,10 @@ static int certattr_matchip(GENERAL_NAME *gn, struct certattrmatch *match){
         && !memcmp(ASN1_STRING_get0_data(gn->d.iPAddress), &match->ipaddr, l)) ? 1 : 0 ;
 }
 
+// Generates a generic DNS. eg: converts idp.openroaming.net to *.openroaming.net
 static int compareWithModifiedHostname(char* certDNS, char* scriptHostName) {
     int len = 0;
-    int len1 = 0, len2 = 0;
+    int lenOfGeneric = 0, lenOfModifiedScriptHostName = 0;
     char* pos;
     char* modifiedScriptHostName;
     char *result;
@@ -639,11 +640,11 @@ static int compareWithModifiedHostname(char* certDNS, char* scriptHostName) {
     memcpy(modifiedScriptHostName, pos, len);
     modifiedScriptHostName[len] = '\0';
     debug(DBG_DBG, "modifiedScriptHostName : %s", modifiedScriptHostName);
-    len1 = strlen(generic);
-    len2 = strlen(modifiedScriptHostName);
-    result = malloc(len1 + len2 + 1); 
-    memcpy(result, generic, len1);
-    memcpy(result + len1, modifiedScriptHostName, len2 + 1);
+    lenOfGeneric = strlen(generic);
+    lenOfModifiedScriptHostName = strlen(modifiedScriptHostName);
+    result = malloc(lenOfGeneric + lenOfModifiedScriptHostName + 1); 
+    memcpy(result, generic, lenOfGeneric);
+    memcpy(result + lenOfGeneric, modifiedScriptHostName, lenOfModifiedScriptHostName + 1);
     if (strlen(certDNS) == strlen(result) && memcmp(result, certDNS, strlen(certDNS)) == 0)
             return 1;
     return 0;
