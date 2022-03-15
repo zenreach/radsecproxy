@@ -637,6 +637,9 @@ static int compareWithModifiedHostname(char* certDNS, char* scriptHostName) {
     char *result;
     char generic[] = "*";
     pos = strchr(scriptHostName, '.');
+    if(pos == -1) {
+        return 0;
+    }
     len = strlen(pos);
     modifiedScriptHostName = malloc(len + 1);
     memcpy(modifiedScriptHostName, pos, len);
@@ -647,8 +650,13 @@ static int compareWithModifiedHostname(char* certDNS, char* scriptHostName) {
     result = malloc(lenOfGeneric + lenOfModifiedScriptHostName + 1); 
     memcpy(result, generic, lenOfGeneric);
     memcpy(result + lenOfGeneric, modifiedScriptHostName, lenOfModifiedScriptHostName + 1);
-    if (strlen(certDNS) == strlen(result) && memcmp(result, certDNS, strlen(certDNS)) == 0)
-            return 1;
+    if (strlen(certDNS) == strlen(result) && memcmp(result, certDNS, strlen(certDNS)) == 0) {
+        free(result);
+        free(modifiedScriptHostName);
+        return 1;
+    }
+    free(result);
+    free(modifiedScriptHostName);
     return 0;
 }
 
