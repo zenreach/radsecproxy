@@ -637,7 +637,7 @@ static int compareWithModifiedHostname(char* certDNS, char* scriptHostName) {
     char *result;
     char generic[] = "*";
     pos = strchr(scriptHostName, '.');
-    if(pos == -1) {
+    if(pos == NULL) {
         return 0;
     }
     len = strlen(pos);
