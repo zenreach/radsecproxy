@@ -630,34 +630,46 @@ static int certattr_matchip(GENERAL_NAME *gn, struct certattrmatch *match){
 // Compares generated generic DNS with DNS from certificate
 // returns 1 if both match else returns 0
 static int compareWithModifiedHostname(char* certDNS, char* scriptHostName) {
+    if(certDNS == NULL || scriptHostName == NULL) {
+        return 0;
+    }
+    int retCode = 0;
     int len = 0;
     int lenOfGeneric = 0, lenOfModifiedScriptHostName = 0;
-    char* pos;
-    char* modifiedScriptHostName;
-    char *result;
+    char* pos = NULL;
+    char* modifiedScriptHostName = NULL;
+    char *result = NULL;
     char generic[] = "*";
     pos = strchr(scriptHostName, '.');
     if(pos == NULL) {
-        return 0;
+        return retCode;
     }
     len = strlen(pos);
-    modifiedScriptHostName = malloc(len + 1);
+    modifiedScriptHostName = (char*) calloc(len + 1, sizeof(char));
+    if(modifiedScriptHostName == NULL) {
+        return retCode;
+    }
     memcpy(modifiedScriptHostName, pos, len);
-    modifiedScriptHostName[len] = '\0';
-    debug(DBG_DBG, "modifiedScriptHostName : %s", modifiedScriptHostName);
     lenOfGeneric = strlen(generic);
     lenOfModifiedScriptHostName = strlen(modifiedScriptHostName);
-    result = malloc(lenOfGeneric + lenOfModifiedScriptHostName + 1); 
-    memcpy(result, generic, lenOfGeneric);
-    memcpy(result + lenOfGeneric, modifiedScriptHostName, lenOfModifiedScriptHostName + 1);
-    if (strlen(certDNS) == strlen(result) && memcmp(result, certDNS, strlen(certDNS)) == 0) {
-        free(result);
-        free(modifiedScriptHostName);
-        return 1;
+    result = (char*) calloc(lenOfGeneric + lenOfModifiedScriptHostName + 1, sizeof(char)); 
+    if(result == NULL) {
+        return retCode;
     }
-    free(result);
-    free(modifiedScriptHostName);
-    return 0;
+    memcpy(result, generic, lenOfGeneric);
+    memcpy(result + lenOfGeneric, modifiedScriptHostName, lenOfModifiedScriptHostName);
+    if (strlen(certDNS) == strlen(result) && memcmp(result, certDNS, strlen(certDNS)) == 0) {
+        retCode = 1;
+    }
+    if(result) {
+        free(result);
+        result = NULL;
+    }
+    if (modifiedScriptHostName) {
+        free(modifiedScriptHostName);
+        modifiedScriptHostName = NULL;
+    }
+    return retCode;
 }
 
 static int _general_name_regex_match(char *v, int l, struct certattrmatch *match) {
