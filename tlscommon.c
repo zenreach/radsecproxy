@@ -626,50 +626,140 @@ static int certattr_matchip(GENERAL_NAME *gn, struct certattrmatch *match){
         && !memcmp(ASN1_STRING_get0_data(gn->d.iPAddress), &match->ipaddr, l)) ? 1 : 0 ;
 }
 
-// Generates a generic DNS. eg: converts idp.openroaming.net to *.openroaming.net
-// Compares generated generic DNS with DNS from certificate
-// returns 1 if both match else returns 0
-static int compareWithModifiedHostname(char* certDNS, char* scriptHostName) {
-    if(certDNS == NULL || scriptHostName == NULL) {
-        return 0;
+static char* extractFirstPortion(char* dns) {
+    char* result = NULL;
+    char *firstPos = strchr(dns, '.');
+    if(firstPos == NULL) {
+        return result;
     }
-    int retCode = 0;
-    int len = 0;
-    int lenOfGeneric = 0, lenOfModifiedScriptHostName = 0;
-    char* pos = NULL;
-    char* modifiedScriptHostName = NULL;
-    char *result = NULL;
-    char generic[] = "*";
-    pos = strchr(scriptHostName, '.');
-    if(pos == NULL) {
-        return retCode;
+    int lenOfFirstPortion = strlen(dns) - strlen(firstPos);
+    result = (char*) calloc(lenOfFirstPortion, sizeof(char));
+    memcpy(result, dns, lenOfFirstPortion);
+}
+
+static char* copy(char* s1, char* s2) {
+    if(s1 == NULL) {
+        return s2;
+    } 
+    if(s2 == NULL) {
+        return s1;
     }
-    len = strlen(pos);
-    modifiedScriptHostName = (char*) calloc(len + 1, sizeof(char));
-    if(modifiedScriptHostName == NULL) {
-        return retCode;
+    if(s1 == NULL && s2 == NULL) {
+        return NULL;
     }
-    memcpy(modifiedScriptHostName, pos, len);
-    lenOfGeneric = strlen(generic);
-    lenOfModifiedScriptHostName = strlen(modifiedScriptHostName);
-    result = (char*) calloc(lenOfGeneric + lenOfModifiedScriptHostName + 1, sizeof(char)); 
+    char* result = (char*) calloc(strlen(s1) + strlen(s2), sizeof(char)); 
     if(result == NULL) {
-        return retCode;
+        return NULL;
     }
-    memcpy(result, generic, lenOfGeneric);
-    memcpy(result + lenOfGeneric, modifiedScriptHostName, lenOfModifiedScriptHostName);
-    if (strlen(certDNS) == strlen(result) && memcmp(result, certDNS, strlen(certDNS)) == 0) {
-        retCode = 1;
+    memcpy(result, s1, strlen(s1));
+    memcpy(result + strlen(s1), s2, strlen(s2));
+    return result;
+}
+
+static char* append(int n, ...) {
+    char* val = NULL;
+   va_list ap;
+   int i;
+
+   va_start(ap, n);
+   char* v = NULL;
+   int size = 0;
+   for(i = 0; i < n; i++) {
+      val = va_arg(ap, char*);
+      v = copy(v, val);
+   }
+   va_end(ap);
+   return v;
+}
+
+static char* extractFirstPortion(char* dns, char c) {
+    char* result = NULL;
+    char *firstPos = strchr(dns, c);
+    if(firstPos == NULL) {
+        return result;
     }
-    if(result) {
-        free(result);
-        result = NULL;
+    int lenOfFirstPortion = strlen(dns) - strlen(firstPos);
+    result = (char*) calloc(lenOfFirstPortion, sizeof(char));
+    memcpy(result, dns, lenOfFirstPortion);
+    return result;
+}
+
+static int regexMatcher(char* pattern, char* str) {
+    regex_t    regex;
+    char buffer[100];
+    
+    int reti = regcomp(&regex, pattern, REG_EXTENDED);
+    if (reti) {
+        regerror(reti, &regex, buffer, 100);
+        printf("regcomp() failed with '%s'\n", buffer); 
+        return 0;
+    }        
+    reti = regexec(&regex, str, 0, NULL, 0);
+    if(reti) {                
+        return 0;                                            
     }
-    if (modifiedScriptHostName) {
-        free(modifiedScriptHostName);
-        modifiedScriptHostName = NULL;
+    return 1;
+}
+
+static int compareWithModifiedHostname(char* certDNS, char* hostname) {
+    // extract first portion from certDNS
+    char* firstPorCertDNS = extractFirstPortion(certDNS, '.');
+    char* firstPorHostName = extractFirstPortion(hostname, '.');
+    // printf("firstPorHostName : %s\n", firstPorHostName);
+    debug(DBG_DBG, "firstPorHostName : %s\n", firstPorHostName);
+    // printf("firstPorCertDNS : %s\n", firstPorCertDNS);
+    debug(DBG_DBG, "firstPorCertDNS : %s\n", firstPorCertDNS);
+    // printf("firstPorCertDNS + 1 : %s\n", firstPorCertDNS+1);
+    debug(DBG_DBG, "firstPorCertDNS + 1 : %s\n", firstPorCertDNS + 1);
+    
+    char* pattern = NULL;
+    char* regex1 = "[a-zA-Z0-9]";
+    char* regex2 = "[a-zA-Z0-9_-]";
+    char* startRegex = "^";
+    char* endRregex = "$";
+    char* wildcard = "*";
+    
+    if(strlen(firstPorCertDNS) == 1) {
+        // look for exact match
+        // char* lastPorCertDNS = strchr(certDNS, '.');
+        char* lastPorHostName = strchr(hostname, '.');
+        char* _s = append(2, wildcard, lastPorHostName);
+        // printf("lastPorHostName : %s\n", lastPorHostName);
+        debug(DBG_DBG, "lastPorHostName : %s\n", lastPorHostName);
+        // printf("_s : %s\n", _s);
+        debug(DBG_DBG, "_s : %s\n", _s);
+        if(strlen(_s) == strlen(certDNS) && memcmp(_s, certDNS, strlen(certDNS)) == 0) {
+            // printf("Matched : _s :  %s, certDNS : %s\n", _s, certDNS);
+            debug(DBG_DBG, "Matched : _s :  %s, certDNS : %s\n", _s, certDNS);
+        }
     }
-    return retCode;
+    
+    // find where and if * is present
+    char* asteriskPos = strchr(firstPorCertDNS, '*');
+    if(asteriskPos == NULL) {
+        // printf("No asterisk found!");
+        debug(DBG_DBG, "No asterisk found!");
+    }
+    
+    if(firstPorCertDNS[0] == '*') {
+        // *buzz
+        pattern = append(5, startRegex, regex1, regex2, firstPorCertDNS, endRregex);
+    } else if(firstPorCertDNS[strlen(firstPorCertDNS)-1] == '*') {
+        // buzz*
+        // ^buzz[a-zA-Z0-9_-]*$
+        pattern = append(5, startRegex, extractFirstPortion(firstPorCertDNS, '*'), regex2, wildcard, endRregex);
+    } else {
+        // bu*z => ^bu[a-zA-Z0-9-_]*z$
+        pattern = append(5, startRegex, extractFirstPortion(firstPorCertDNS, '*'), regex2, strchr(firstPorCertDNS, '*'), endRregex);
+    }
+    if(regexMatcher(pattern, firstPorHostName)) {
+        // printf("Matched : pattern : %s, certdns : %s, hostname: %s\n", pattern, firstPorCertDNS, firstPorHostName);
+        debug(DBG_DBG, "Matched : pattern : %s, certdns : %s, hostname: %s\n", pattern, firstPorCertDNS, firstPorHostName);
+    } else {
+        // printf("Unmatched : pattern : %s, certdns : %s, hostname: %s\n", pattern, firstPorCertDNS, firstPorHostName);
+        debug(DBG_DBG, "Unmatched : pattern : %s, certdns : %s, hostname: %s\n", pattern, firstPorCertDNS, firstPorHostName);
+    }
+    return 0;
 }
 
 static int _general_name_regex_match(char *v, int l, struct certattrmatch *match) {
@@ -699,6 +789,7 @@ static int _general_name_regex_match(char *v, int l, struct certattrmatch *match
 }
 
 static int certattr_matchregex(GENERAL_NAME *gn, struct certattrmatch *match) {
+    debug(DBG_DBG, "cert DNS name (%s)", (char *)ASN1_STRING_get0_data(gn->d.ia5));
     return _general_name_regex_match((char *)ASN1_STRING_get0_data(gn->d.ia5), ASN1_STRING_length(gn->d.ia5), match);
 }
 
