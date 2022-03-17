@@ -10,6 +10,8 @@
 #include <netinet/in.h>
 #include <netdb.h>
 #include <string.h>
+#include <stdarg.h>
+#include <regex.h>
 #include <unistd.h>
 #include <limits.h>
 #include <fcntl.h>
