@@ -713,6 +713,9 @@ static char* calculateLenOfLabel(int len) {
 // Wiki: A domain name consists of one or more labels, each of which is formed from the set of ASCII letters, 
 // digits, and hyphens (a-z, A-Z, 0–9, -), but not starting or ending with a hyphen. 
 // The labels are case-insensitive
+// Internationlized Domain Names: www.äöü.com converted to www.xn--4ca0bs.com. xn--4ca0bs is considered
+// a valid DN and let through. diseñolatinoamericano.com => xn--diseolatinoamericano-66b.com will also be
+// let through. So IDNs are passed in Punycode encoded and xn-- says everything that follows is unicode encoded.
 static int compareWithModifiedHostname(char* certDNS, char* hostname) {
     char* firstPorCertDNS = extractFirstPortion(certDNS, '.');
     if(firstPorCertDNS == NULL) {
