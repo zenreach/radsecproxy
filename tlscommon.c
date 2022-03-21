@@ -706,9 +706,13 @@ static char* calculateLenOfLabel(int len) {
 // in certificate DNS. Matches the regular expression with the first label of hostname and
 // returns result - 1 - matched, 0 - unmatched
 // Refer https://datatracker.ietf.org/doc/html/rfc6125#section-6.4
-// buzz* => ^buzz[a-zA-Z0-9-_]{0,59}$
-// *buzz => ^[a-z0-9A-Z][a-z0-9A-Z-_]{0,59}buzz$
-// b*uzz => ^b[a-zA-Z0-9-_]{0,59}uzz$
+// buzz* => ^buzz[a-zA-Z0-9-]{0,59}$
+// *buzz => ^[a-z0-9A-Z][a-z0-9A-Z-]{0,59}buzz$
+// b*uzz => ^b[a-zA-Z0-9-]{0,59}uzz$
+// 63 - Maximum length of a label 
+// A domain name consists of one or more labels, each of which is formed from the set of ASCII letters, 
+// digits, and hyphens (a-z, A-Z, 0–9, -), but not starting or ending with a hyphen. 
+// The labels are case-insensitive
 static int compareWithModifiedHostname(char* certDNS, char* hostname) {
     char* firstPorCertDNS = extractFirstPortion(certDNS, '.');
     if(firstPorCertDNS == NULL) {
@@ -721,7 +725,7 @@ static int compareWithModifiedHostname(char* certDNS, char* hostname) {
     }
     
     char* pattern = NULL;
-    char* regex2 = "[a-zA-Z0-9_-]";
+    char* regex2 = "[a-zA-Z0-9-]";
     char* startRegex = "^";
     char* endRregex = "$";
     char* wildcard = "*";
@@ -768,7 +772,7 @@ static int compareWithModifiedHostname(char* certDNS, char* hostname) {
     }
 
     if(firstPorCertDNS[0] == '*') {
-        char* regex1 = "^[a-z0-9A-Z][a-z0-9A-Z_-]";
+        char* regex1 = "^[a-z0-9A-Z][a-z0-9A-Z-]";
         pattern = append(4, regex1, lenRegex, asteriskPos + 1, endRregex);
     } else if(firstPorCertDNS[strlen(firstPorCertDNS)-1] == '*') {
         char* regex1 = extractFirstPortion(firstPorCertDNS, '*');
