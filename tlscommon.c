@@ -628,7 +628,7 @@ static int certattr_matchip(GENERAL_NAME *gn, struct certattrmatch *match){
         && !memcmp(ASN1_STRING_get0_data(gn->d.iPAddress), &match->ipaddr, l)) ? 1 : 0 ;
 }
 
-static char* copy(char* s1, char* s2) {
+static char* concatenate(char* s1, char* s2) {
     if(s1 == NULL) {
         return s2;
     } 
@@ -656,7 +656,7 @@ static char* append(int n, ...) {
    char* result = NULL;
    for(i = 0; i < n; i++) {
       val = va_arg(ap, char*);
-      result = copy(result, val);
+      result = concatenate(result, val);
    }
    va_end(ap);
    return result;
@@ -779,10 +779,22 @@ static int compareWithModifiedHostname(char* certDNS, char* hostname) {
         pattern = append(4, regex1, lenRegex, asteriskPos + 1, endRregex);
     } else if(firstPorCertDNS[strlen(firstPorCertDNS)-1] == '*') {
         char* regex1 = extractFirstPortion(firstPorCertDNS, '*');
+        if(regex1 == NULL) {
+            free(firstPorCertDNS);
+            free(firstPorHostName);
+            return 0;
+        }
         pattern = append(5, startRegex, regex1, regex2, lenRegex, endRregex);
+        free(regex1);
     } else {
         char* regex1 = extractFirstPortion(firstPorCertDNS, '*');
+        if(regex1 == NULL) {
+            free(firstPorCertDNS);
+            free(firstPorHostName);
+            return 0;
+        }
         pattern = append(6, startRegex, regex1, regex2, lenRegex, asteriskPos + 1, endRregex);
+        free(regex1);
     }
     
     if(regexMatcher(pattern, firstPorHostName)) {
@@ -801,6 +813,8 @@ static int _general_name_regex_match(char *v, int l, struct certattrmatch *match
     char *s;
     if (l <= 0 ) 
         return 0;
+
+    // Found DNS 
     if (match->exact) {
         if (l == strlen(match->exact) && memcmp(v, match->exact, l) == 0)
             return 1;
