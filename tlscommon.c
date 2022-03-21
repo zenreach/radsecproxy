@@ -710,7 +710,7 @@ static char* calculateLenOfLabel(int len) {
 // *buzz => ^[a-z0-9A-Z][a-z0-9A-Z-]{0,59}buzz$
 // b*uzz => ^b[a-zA-Z0-9-]{0,59}uzz$
 // 63 - Maximum length of a label 
-// A domain name consists of one or more labels, each of which is formed from the set of ASCII letters, 
+// Wiki: A domain name consists of one or more labels, each of which is formed from the set of ASCII letters, 
 // digits, and hyphens (a-z, A-Z, 0–9, -), but not starting or ending with a hyphen. 
 // The labels are case-insensitive
 static int compareWithModifiedHostname(char* certDNS, char* hostname) {
@@ -822,7 +822,6 @@ static int _general_name_regex_match(char *v, int l, struct certattrmatch *match
 }
 
 static int certattr_matchregex(GENERAL_NAME *gn, struct certattrmatch *match) {
-    debug(DBG_DBG, "cert DNS name (%s)", (char *)ASN1_STRING_get0_data(gn->d.ia5));
     return _general_name_regex_match((char *)ASN1_STRING_get0_data(gn->d.ia5), ASN1_STRING_length(gn->d.ia5), match);
 }
 
