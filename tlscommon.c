@@ -629,16 +629,23 @@ static int certattr_matchip(GENERAL_NAME *gn, struct certattrmatch *match){
 }
 
 static char* concatenate(char* s1, char* s2) {
-    if(s1 == NULL) {
-        return s2;
-    } 
-    if(s2 == NULL) {
-        return s1;
-    }
+    char* result = NULL;
     if(s1 == NULL && s2 == NULL) {
         return NULL;
     }
-    char* result = (char*) calloc(strlen(s1) + strlen(s2), sizeof(char)); 
+    if(s1 == NULL) {
+        result = (char*) calloc(strlen(s2) + 1, sizeof(char));
+        // memcpy(result, s2, strlen(s2));
+        strcpy(result, s2);
+        return result;
+    } 
+    if(s2 == NULL) {
+        result = (char*) calloc(strlen(s2) + 1, sizeof(char));
+        // memcpy(result, s2, strlen(s2));
+        strcpy(result, s2);
+        return result;
+    }
+    result = (char*) calloc(strlen(s1) + strlen(s2) + 1, sizeof(char)); 
     if(result == NULL) {
         return NULL;
     }
@@ -662,14 +669,14 @@ static char* append(int n, ...) {
    return result;
 }
 
-static char* extractFirstPortion(char* dns, char c) {
+static char* extractFirstPortion(const char* dns, const char c) {
     char* result = NULL;
     char *firstPos = strchr(dns, c);
     if(firstPos == NULL) {
         return result;
     }
     int lenOfFirstPortion = strlen(dns) - strlen(firstPos);
-    result = (char*) calloc(lenOfFirstPortion, sizeof(char));
+    result = (char*) calloc(lenOfFirstPortion + 1, sizeof(char));
     if(result == NULL) {
         return NULL;
     }
@@ -683,7 +690,7 @@ static int regexMatcher(char* pattern, char* str) {
     
     int reti = regcomp(&regex, pattern, REG_EXTENDED);
     if (reti) {
-        regerror(reti, &regex, buffer, 100);
+        regerror(reti, &regex, buffer, sizeof(buffer));
         debug(DBG_ERR, "regcomp failed with '%s'\n", buffer);
         return 0;
     }        
@@ -719,12 +726,13 @@ static char* calculateLenOfLabel(int len) {
 static int compareWithModifiedHostname(char* certDNS, char* hostname) {
     char* firstPorCertDNS = extractFirstPortion(certDNS, '.');
     if(firstPorCertDNS == NULL) {
-        return 0;
+        return retCode;
     }
     char* firstPorHostName = extractFirstPortion(hostname, '.');
     if(firstPorHostName == NULL) {
-        free(firstPorCertDNS);
-        return 0;
+        // free(firstPorCertDNS);
+        // return 0;
+        goto cleanupInit;
     }
     
     char* pattern = NULL;
@@ -733,80 +741,140 @@ static int compareWithModifiedHostname(char* certDNS, char* hostname) {
     char* endRregex = "$";
     char* wildcard = "*";
     
+    int retCode = 0;
+
     // Handles *.3af521.net (cert DNS) and idp.3af521.net (host name) case
     if(strlen(firstPorCertDNS) == 1 && firstPorCertDNS[0] == '*') {
 
         char* lastPorHostName = strchr(hostname, '.');
         if(lastPorHostName == NULL) {
-            free(firstPorCertDNS);
-            free(firstPorHostName);
-            return 0;
+            // free(firstPorCertDNS);
+            // free(firstPorHostName);
+            // return 0;
+            goto cleanupFirstPortions;
         }
         char* modifiedHostName = append(2, wildcard, lastPorHostName);
         if(modifiedHostName == NULL) {
-            free(firstPorCertDNS);
-            free(firstPorHostName);
-            return 0;
+            // free(firstPorCertDNS);
+            // free(firstPorHostName);
+            // return 0;
+            goto cleanupFirstPortions;
         }
         if(strlen(modifiedHostName) == strlen(certDNS) && memcmp(modifiedHostName, certDNS, strlen(certDNS)) == 0) {
-            free(modifiedHostName);
+            // free(modifiedHostName);
+            // free(firstPorCertDNS);
+            // free(firstPorHostName);
+            // return 1;
+            retCode = 1;
+            goto cleanupBlock;
+        }
+        // free(modifiedHostName);
+        // free(firstPorCertDNS);
+        // free(firstPorHostName);
+        // return 0;
+        goto cleanupBlock;
+
+        cleanupBlock:
             free(firstPorCertDNS);
             free(firstPorHostName);
-            return 1;
-        }
-        free(modifiedHostName);
-        free(firstPorCertDNS);
-        free(firstPorHostName);
-        return 0;
+            free(modifiedHostName);
+            return retCode;
     }
     
     char* asteriskPos = strchr(firstPorCertDNS, '*');
     if(asteriskPos == NULL) {
-        free(firstPorCertDNS);
-        free(firstPorHostName);
-        return 0;
+        // free(firstPorCertDNS);
+        // free(firstPorHostName);
+        // return 0;
+        goto cleanupFirstPortions;
     }
 
     char* lenRegex = calculateLenOfLabel(63 - strlen(firstPorCertDNS) - 1);
     if(lenRegex == NULL) {
-        free(firstPorCertDNS);
-        free(firstPorHostName);
-        return 0;
+        // free(firstPorCertDNS);
+        // free(firstPorHostName);
+        // return 0;
+        goto cleanupFirstPortions;
     }
 
     if(firstPorCertDNS[0] == '*') {
         char* regex1 = "^[a-z0-9A-Z][a-z0-9A-Z-]";
         pattern = append(4, regex1, lenRegex, asteriskPos + 1, endRregex);
+        if(pattern == NULL) {
+            // free(firstPorCertDNS);
+            // free(firstPorHostName);
+            // free(lenRegex);
+            // return 0;
+            goto cleanupWOPattern;
+        }
     } else if(firstPorCertDNS[strlen(firstPorCertDNS)-1] == '*') {
         char* regex1 = extractFirstPortion(firstPorCertDNS, '*');
         if(regex1 == NULL) {
-            free(firstPorCertDNS);
-            free(firstPorHostName);
-            return 0;
+            // free(firstPorCertDNS);
+            // free(firstPorHostName);
+            // free(lenRegex);
+            // return 0;
+            goto cleanupWOPattern;
         }
         pattern = append(5, startRegex, regex1, regex2, lenRegex, endRregex);
-        free(regex1);
+        if(pattern == NULL) {
+            // free(firstPorCertDNS);
+            // free(firstPorHostName);
+            // free(lenRegex);
+            // return 0;
+            free(regex1);
+            goto cleanup;
+        }
+        // free(regex1);
     } else {
         char* regex1 = extractFirstPortion(firstPorCertDNS, '*');
         if(regex1 == NULL) {
-            free(firstPorCertDNS);
-            free(firstPorHostName);
-            return 0;
+            // free(firstPorCertDNS);
+            // free(firstPorHostName);
+            // return 0;
+            goto cleanupWOPattern;
         }
         pattern = append(6, startRegex, regex1, regex2, lenRegex, asteriskPos + 1, endRregex);
-        free(regex1);
+        if(pattern == NULL) {
+            // free(firstPorCertDNS);
+            // free(firstPorHostName);
+            // free(lenRegex);
+            // return 0;
+            free(regex1);
+            goto cleanup;
+        }
+        // free(regex1);
     }
     
     if(regexMatcher(pattern, firstPorHostName)) {
+        // free(lenRegex);
+        // free(pattern);
+        // free(firstPorCertDNS);
+        // free(firstPorHostName);
+        // return 1;
+        goto cleanup;
+        retCode = 1;
+    }
+
+    cleanupInit:
+        free(firstPorCertDNS);
+
+    cleanupFirstPortions:
+        free(firstPorCertDNS);
+        free(firstPorHostName);
+
+    cleanupWOPattern:
+        free(firstPorCertDNS);
+        free(firstPorHostName);
+        free(lenRegex);
+
+    cleanup:
+        free(lenRegex);
         free(pattern);
         free(firstPorCertDNS);
         free(firstPorHostName);
-        return 1;
-    }
-    free(pattern);
-    free(firstPorCertDNS);
-    free(firstPorHostName);
-    return 0;
+    
+    return retCode;
 }
 
 static int _general_name_regex_match(char *v, int l, struct certattrmatch *match) {
