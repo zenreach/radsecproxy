@@ -702,11 +702,28 @@ static int regexMatcher(char* pattern, char* str) {
 }
 
 static char* calculateLenOfLabel(int len) {
-    char str[3];
-    sprintf(str, "%d", len);
-    debug(DBG_DBG, "str : %s", str);
+
+    // int x = -42;
+    // int length = snprintf( NULL, 0, "%d", x );
+    // char* str = malloc( length + 1 );
+    // snprintf( str, length + 1, "%d", x );
+    // ...
+    // free(str);
+
+    int length = snprintf(NULL, 0, "%d", len);
+    char* str = (char*) calloc(length+1);
+    if(str == NULL) {
+        return NULL;
+    }
+    snprintf(str, length+1, "%d", len);
     char* result = append(3, "{0,", str, "}");
+    free(str);
     return result;
+
+    // char str[3];
+    // sprintf(str, "%d", len);
+    // char* result = append(3, "{0,", str, "}");
+    // return result;
 }
 
 // compareWithModifiedHostname generates a regular expression based on the first label present
