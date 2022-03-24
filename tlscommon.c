@@ -647,7 +647,7 @@ static char* concatenate(char* s1, char* s2) {
     if(result == NULL) {
         return NULL;
     }
-    memcpy(result, s1, strlen(s1));
+    strcpy(result, s1);
     memcpy(result + strlen(s1), s2, strlen(s2));
     return result;
 }
