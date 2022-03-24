@@ -10,6 +10,8 @@
 #include <netinet/in.h>
 #include <netdb.h>
 #include <string.h>
+#include <stdarg.h>
+#include <regex.h>
 #include <unistd.h>
 #include <limits.h>
 #include <fcntl.h>
@@ -626,13 +628,227 @@ static int certattr_matchip(GENERAL_NAME *gn, struct certattrmatch *match){
         && !memcmp(ASN1_STRING_get0_data(gn->d.iPAddress), &match->ipaddr, l)) ? 1 : 0 ;
 }
 
+static char* concatenate(char* s1, char* s2) {
+    char* result = NULL;
+    if(s1 == NULL && s2 == NULL) {
+        return NULL;
+    }
+    if(s1 == NULL) {
+        result = (char*) calloc(strlen(s2) + 1, sizeof(char));
+        strcpy(result, s2);
+        return result;
+    } 
+    if(s2 == NULL) {
+        result = (char*) calloc(strlen(s1) + 1, sizeof(char));
+        strcpy(result, s1);
+        return result;
+    }
+    result = (char*) calloc(strlen(s1) + strlen(s2) + 1, sizeof(char)); 
+    if(result == NULL) {
+        return NULL;
+    }
+    strcpy(result, s1);
+    memcpy(result + strlen(s1), s2, strlen(s2));
+    return result;
+}
+
+static char* append(int n, ...) {
+   char* val = NULL;
+   va_list ap;
+   int i;
+
+   va_start(ap, n);
+   char* result = NULL;
+   for(i = 0; i < n; i++) {
+      val = va_arg(ap, char*);
+      result = concatenate(result, val);
+   }
+   va_end(ap);
+   return result;
+}
+
+static char* extractFirstPortion(const char* dns, const char c) {
+    char* result = NULL;
+    char *firstPos = strchr(dns, c);
+    if(firstPos == NULL) {
+        return result;
+    }
+    int lenOfFirstPortion = strlen(dns) - strlen(firstPos);
+    result = (char*) calloc(lenOfFirstPortion + 1, sizeof(char));
+    if(result == NULL) {
+        return NULL;
+    }
+    memcpy(result, dns, lenOfFirstPortion);
+    return result;
+}
+
+static int regexMatcher(char* pattern, char* str) {
+    regex_t    regex;
+    char buffer[100];
+    
+    int reti = regcomp(&regex, pattern, REG_EXTENDED);
+    if (reti) {
+        regerror(reti, &regex, buffer, sizeof(buffer));
+        debug(DBG_ERR, "regcomp failed with '%s'\n", buffer);
+        return 0;
+    }        
+    reti = regexec(&regex, str, 0, NULL, 0);
+    if(reti) {             
+        return 0;                                            
+    }
+    return 1;
+}
+
+static char* convertLenToString(int len) {
+    int length = snprintf(NULL, 0, "%d", len);
+    char* str = (char*) calloc(length+1, sizeof(char));
+    if(str == NULL) {
+        return NULL;
+    }
+    snprintf(str, length+1, "%d", len);
+    char* result = append(3, "{0,", str, "}");
+    free(str);
+    return result;
+}
+
+// compareWithModifiedHostname generates a regular expression based on the first label present
+// in certificate DNS. Matches the regular expression with the first label of hostname and
+// returns result - 1 - matched, 0 - unmatched
+// Refer https://datatracker.ietf.org/doc/html/rfc6125#section-6.4
+// buzz* => ^buzz[a-zA-Z0-9-]{0,59}$
+// *buzz => ^[a-z0-9A-Z][a-z0-9A-Z-]{0,59}buzz$
+// b*uzz => ^b[a-zA-Z0-9-]{0,59}uzz$
+// 63 - Maximum length of a label 
+// Wiki: A domain name consists of one or more labels, each of which is formed from the set of ASCII letters, 
+// digits, and hyphens (a-z, A-Z, 0–9, -), but not starting or ending with a hyphen. 
+// The labels are case-insensitive
+// Internationlized Domain Names: www.äöü.com converted to www.xn--4ca0bs.com. xn--4ca0bs is considered
+// a valid DN and let through. diseñolatinoamericano.com => xn--diseolatinoamericano-66b.com will also be
+// let through. So IDNs are passed in Punycode encoded and xn-- says everything that follows is unicode encoded.
+static int compareWithModifiedHostname(char* certDNS, char* hostname) {
+
+    int retCode = 0;
+    char* firstPorCertDNS = extractFirstPortion(certDNS, '.');
+    char* pattern = NULL;
+    char* lenRegex = NULL;
+
+    if(firstPorCertDNS == NULL) {
+        return retCode;
+    }
+    char* firstPorHostName = extractFirstPortion(hostname, '.');
+    if(firstPorHostName == NULL) {
+        goto cleanup;
+    }
+    
+    char* regex2 = "[a-zA-Z0-9-]";
+    char* startRegex = "^";
+    char* endRregex = "$";
+    char* wildcard = "*";
+
+    // Handles *.3af521.net (cert DNS) and idp.3af521.net (host name) case
+    if(strlen(firstPorCertDNS) == 1 && firstPorCertDNS[0] == '*') {
+
+        char* lastPorHostName = strchr(hostname, '.');
+        if(lastPorHostName == NULL) {
+            goto cleanup;
+        }
+        char* modifiedHostName = append(2, wildcard, lastPorHostName);
+        if(modifiedHostName == NULL) {
+            goto cleanup;
+        }
+        if(strlen(modifiedHostName) == strlen(certDNS) && memcmp(modifiedHostName, certDNS, strlen(certDNS)) == 0) {
+            retCode = 1;
+            goto cleanupBlock;
+        }
+        goto cleanupBlock;
+
+        cleanupBlock:
+            if(firstPorCertDNS != NULL) {
+                free(firstPorCertDNS);
+            }
+            if(firstPorHostName != NULL) {
+                free(firstPorHostName);
+            }
+            if(modifiedHostName != NULL) {
+                free(modifiedHostName);
+            }
+            return retCode;
+    }
+    
+    char* asteriskPos = strchr(firstPorCertDNS, '*');
+    if(asteriskPos == NULL) {
+        goto cleanup;
+    }
+
+    lenRegex = convertLenToString(63 - strlen(firstPorCertDNS) - 1);
+    if(lenRegex == NULL) {
+        goto cleanup;
+    }
+
+    if(firstPorCertDNS[0] == '*') {
+        char* regex1 = "^[a-z0-9A-Z][a-z0-9A-Z-]";
+        pattern = append(4, regex1, lenRegex, asteriskPos + 1, endRregex);
+        if(pattern == NULL) {
+            goto cleanup;
+        }
+    } else if(firstPorCertDNS[strlen(firstPorCertDNS)-1] == '*') {
+        char* regex1 = extractFirstPortion(firstPorCertDNS, '*');
+        if(regex1 == NULL) {
+            goto cleanup;
+        }
+        pattern = append(5, startRegex, regex1, regex2, lenRegex, endRregex);
+        if(pattern == NULL) {
+            free(regex1);
+            goto cleanup;
+        }
+        free(regex1);
+    } else {
+        char* regex1 = extractFirstPortion(firstPorCertDNS, '*');
+        if(regex1 == NULL) {
+            goto cleanup;
+        }
+        pattern = append(6, startRegex, regex1, regex2, lenRegex, asteriskPos + 1, endRregex);
+        if(pattern == NULL) {
+            free(regex1);
+            goto cleanup;
+        }
+        free(regex1);
+    }
+    
+    if(regexMatcher(pattern, firstPorHostName)) {
+        retCode = 1;
+    }
+
+    goto cleanup;
+
+    cleanup:
+        if(firstPorCertDNS != NULL) {
+            free(firstPorCertDNS);
+        }
+        if(firstPorHostName != NULL) {
+            free(firstPorHostName);
+        }
+        if(lenRegex != NULL) {
+            free(lenRegex);
+        }
+        if(pattern != NULL) {
+            free(pattern);
+        }   
+        return retCode;
+}
+
 static int _general_name_regex_match(char *v, int l, struct certattrmatch *match) {
     char *s;
     if (l <= 0 ) 
         return 0;
+
+    // Found DNS 
     if (match->exact) {
         if (l == strlen(match->exact) && memcmp(v, match->exact, l) == 0)
             return 1;
+        if(compareWithModifiedHostname(v, match->exact)) {
+            return 1;
+        }
         return 0;
     }
 
